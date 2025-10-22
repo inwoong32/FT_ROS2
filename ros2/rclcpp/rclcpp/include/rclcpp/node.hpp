@@ -141,6 +141,27 @@ public:
   rclcpp::Logger
   get_logger() const;
 
+
+// ## ADD By IW 
+// ### 25.10.22
+  /// Get the sub_title metadata of the node.
+  /**
+   * \return The sub_title metadata, or empty string if not set.
+   */
+  RCLCPP_PUBLIC
+  const std::string &
+  get_sub_title() const;
+
+  /// Get the node type metadata.
+  /**
+   * \return The node type metadata ('primary' or 'secondary'), or empty string if not set.
+   */
+  RCLCPP_PUBLIC
+  const std::string &
+  get_node_type() const;
+// 
+
+
   /// Create and return a callback group.
   RCLCPP_PUBLIC
   rclcpp::CallbackGroup::SharedPtr
@@ -1312,6 +1333,13 @@ private:
   const rclcpp::NodeOptions node_options_;
   const std::string sub_namespace_;
   const std::string effective_namespace_;
+
+  // ## ADD By IW 
+  // ### 25.10.22
+  std::string sub_title_;
+  std::string node_type_;
+
+  void _parse_metadata_from_args();
 };
 
 }  // namespace rclcpp

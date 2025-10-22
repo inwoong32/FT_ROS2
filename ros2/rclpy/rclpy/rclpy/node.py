@@ -167,6 +167,12 @@ class Node:
         self._parameter_overrides = {}
         self._descriptors = {}
 
+        ## ADD By IW 
+        ### 25.10.22
+        # Metadata fields for redundancy support
+        self._sub_title = ""
+        self._node_type = ""
+
         namespace = namespace or ''
         if not self._context.ok():
             raise NotInitializedException('cannot create node')
@@ -226,6 +232,12 @@ class Node:
 
         if start_parameter_services:
             self._parameter_service = ParameterService(self)
+
+
+        ## ADD By IW 
+        ### 25.10.22
+        # Parse metadata from command line arguments
+        self._parse_metadata_from_args(cli_args)
 
     @property
     def publishers(self) -> Iterator[Publisher]:
@@ -1955,3 +1967,48 @@ class Node:
             topic_name,
             no_mangle,
             _rclpy.rclpy_get_subscriptions_info_by_topic)
+
+
+
+    ## ADD By IW 
+    ### 25.10.22
+    def get_sub_title(self) -> str:
+        """
+        Get the sub_title metadata of the node.
+        
+        :return: The sub_title metadata, or empty string if not set.
+        """
+        return self._sub_title
+
+    def get_node_type(self) -> str:
+        """
+        Get the node type metadata.
+        
+        :return: The node type metadata ('primary' or 'secondary'), or empty string if not set.
+        """
+        return self._node_type
+
+    def _parse_metadata_from_args(self, cli_args: List[str] = None) -> None:
+        """
+        Parse metadata from command line arguments.
+        
+        :param cli_args: Command line arguments to parse.
+        """
+        if cli_args is None:
+            return
+            
+        for i, arg in enumerate(cli_args):
+            if arg == "__sub_title:=" and i + 1 < len(cli_args):
+                self._sub_title = cli_args[i + 1]
+            elif arg == "__type:=" and i + 1 < len(cli_args):
+                self._node_type = cli_args[i + 1]
+            elif arg.startswith("__sub_title:="):
+                self._sub_title = arg[13:]  # Remove "__sub_title:=" prefix
+            elif arg.startswith("__type:="):
+                self._node_type = arg[8:]  # Remove "__type:=" prefix
+        
+        # Set default values if not specified
+        if not self._sub_title:
+            self._sub_title = self.get_name()  # Default to node name
+        if not self._node_type:
+            self._node_type = "primary"  # Default to primary

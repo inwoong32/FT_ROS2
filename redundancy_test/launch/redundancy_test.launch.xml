@@ -1,0 +1,41 @@
+<launch>
+    <!-- Test parameters -->
+    <arg name="test_string_param" default="Hello Redundancy" />
+    <arg name="test_int_param" default="42" />
+    <arg name="test_double_param" default="3.14159" />
+    <arg name="test_bool_param" default="true" />
+    
+    <!-- Test namespace -->
+    <arg name="test_namespace" default="/test_ns" />
+    
+    <!-- Test use_sim_time -->
+    <arg name="use_sim_time" default="true" />
+    
+    <!-- Test custom arguments -->
+    <arg name="custom_arg1" default="custom_value_1" />
+    <arg name="custom_arg2" default="custom_value_2" />
+
+    <node pkg="redundancy_test" exec="redundancy_publisher" name="redundancy_publisher" output="screen" redundancy="true" namespace="$(var test_namespace)">
+        <!-- Parameters -->
+        <!-- <param name="use_sim_time" value="true" /> -->
+        <param name="test_string_param" value="Hello Redundancy" />
+        <param name="test_int_param" value="42" />
+        <param name="test_double_param" value="3.14159" />
+        <param name="test_bool_param" value="true" />
+        <param name="node_specific_param" value="publisher_specific_value" />
+        
+        <!-- Remapping -->
+        <remap from="redundancy_topic" to="remapped_topic" />
+    </node>
+
+    <!-- <node pkg="redundancy_test" exec="redundancy_subscriber" name="redundancy_subscriber" output="screen" redundancy="true" namespace="$(var test_namespace)">
+        <param name="use_sim_time" value="true" />
+        <param name="test_string_param" value="Hello Redundancy" />
+        <param name="test_int_param" value="42" />
+        <param name="test_double_param" value="3.14159" />
+        <param name="test_bool_param" value="true" />
+        <param name="node_specific_param" value="subscriber_specific_value" />
+        
+        <remap from="redundancy_topic" to="remapped_topic" />
+    </node> -->
+</launch>

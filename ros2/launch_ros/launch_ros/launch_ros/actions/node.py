@@ -127,6 +127,11 @@ class Node(ExecuteProcess):
         remappings: Optional[SomeRemapRules] = None,
         ros_arguments: Optional[Iterable[SomeSubstitutionsType]] = None,
         arguments: Optional[Iterable[SomeSubstitutionsType]] = None,
+        ## ADD By IW 
+        ### 25.10.22
+        redundancy: bool = False,
+        sub_title: Optional[SomeSubstitutionsType] = None,
+        node_type: Optional[SomeSubstitutionsType] = None,
         **kwargs
     ) -> None:
         """
@@ -197,6 +202,13 @@ class Node(ExecuteProcess):
             passed to the node as ROS remapping rules
         :param: ros_arguments list of ROS arguments for the node
         :param: arguments list of extra arguments for the node
+
+        ## ADD By IW 
+        ### 25.10.22
+        :param: redundancy if True, creates a redundant copy of the node with '_redundancy' suffix
+        :param: sub_title the sub-title metadata for the node (used for grouping redundant nodes)
+        :param: node_type the type metadata for the node ('primary' or 'secondary')
+        
         """
         if package is not None:
             cmd = [ExecutableInPackage(package=package, executable=executable)]
@@ -210,6 +222,11 @@ class Node(ExecuteProcess):
         if name is not None:
             cmd += ['-r', LocalSubstitution(
                 "ros_specific_arguments['name']", description='node name')]
+        
+        ## ADD By IW 
+        ### 25.10.22
+        # Add sub_title and type as environment variables
+        # These will be set in the execute method
         if parameters is not None:
             ensure_argument_type(parameters, (list), 'parameters', 'Node')
             # All elements in the list are paths to files with parameters (or substitutions that
@@ -226,6 +243,11 @@ class Node(ExecuteProcess):
         self.__remappings = [] if remappings is None else list(normalize_remap_rules(remappings))
         self.__ros_arguments = ros_arguments
         self.__arguments = arguments
+        ## ADD By IW 
+        ### 25.10.22
+        self.__redundancy = redundancy
+        self.__sub_title = sub_title
+        self.__node_type = node_type
 
         self.__expanded_node_name = self.UNSPECIFIED_NODE_NAME
         self.__expanded_node_namespace = self.UNSPECIFIED_NODE_NAMESPACE
@@ -342,6 +364,26 @@ class Node(ExecuteProcess):
         parameters = entity.get_attr('param', data_type=List[Entity], optional=True)
         if parameters is not None:
             kwargs['parameters'] = cls.parse_nested_parameters(parameters, parser)
+
+        ## ADD By IW 
+        ### 25.10.22
+        # Parse redundancy attribute
+        redundancy = entity.get_attr('redundancy', optional=True)
+        if redundancy is not None:
+            # Convert string to bool
+            if isinstance(redundancy, str):
+                redundancy = redundancy.lower() in ('true', '1', 'yes', 'on')
+            kwargs['redundancy'] = redundancy
+            
+        # Parse sub_title attribute
+        sub_title = entity.get_attr('sub_title', optional=True)
+        if sub_title is not None:
+            kwargs['sub_title'] = parser.parse_substitution(sub_title)
+            
+        # Parse node_type attribute
+        node_type = entity.get_attr('node_type', optional=True)
+        if node_type is not None:
+            kwargs['node_type'] = parser.parse_substitution(node_type)
 
         return cls, kwargs
 
@@ -495,6 +537,24 @@ class Node(ExecuteProcess):
             ros_specific_arguments['name'] = '__node:={}'.format(self.__expanded_node_name)
         if self.__expanded_node_namespace != '':
             ros_specific_arguments['ns'] = '__ns:={}'.format(self.__expanded_node_namespace)
+        
+
+        ## ADD By IW 
+        ### 25.10.22
+        # Add metadata if specified, otherwise use defaults
+        if self.__sub_title is not None:
+            ros_specific_arguments['sub_title'] = '__param:=sub_title:={}'.format(self.__sub_title)
+        else:
+            # Default sub_title to node name
+            ros_specific_arguments['sub_title'] = '__param:=sub_title:={}'.format(self.__expanded_node_name)
+            
+        if self.__node_type is not None:
+            ros_specific_arguments['type'] = '__param:=type:={}'.format(self.__node_type)
+        else:
+            # Default node_type to primary
+            ros_specific_arguments['type'] = '__param:=type:=primary'
+        
+
 
         # Give extensions a chance to prepare for execution
         for extension in self.__extensions.values():
@@ -506,6 +566,16 @@ class Node(ExecuteProcess):
             self.cmd.extend(cmd_extension)
 
         context.extend_locals({'ros_specific_arguments': ros_specific_arguments})
+        
+        # Set environment variables for metadata
+        import os
+        if 'sub_title' in ros_specific_arguments:
+            sub_title_value = ros_specific_arguments['sub_title'].replace('__param:=sub_title:=', '')
+            os.environ['ROS_NODE_SUB_TITLE'] = sub_title_value
+        if 'type' in ros_specific_arguments:
+            type_value = ros_specific_arguments['type'].replace('__param:=type:=', '')
+            os.environ['ROS_NODE_TYPE'] = type_value
+        
         ret = super().execute(context)
 
         if self.is_node_name_fully_specified():
@@ -518,6 +588,12 @@ class Node(ExecuteProcess):
                     'launch context'.format(node_name_count, self.node_name)
                 )
 
+        ## ADD By IW 
+        ### 25.10.22
+        # Handle redundancy: create a redundant node if requested
+        if self.__redundancy:  # Temporarily bypass is_node_name_fully_specified check
+            return self._create_redundant_node(context, ros_specific_arguments)
+
         return ret
 
     @property
@@ -529,6 +605,83 @@ class Node(ExecuteProcess):
     def expanded_remapping_rules(self):
         """Getter for expanded_remappings."""
         return self.__expanded_remappings
+
+    ## ADD By IW 
+    ### 25.10.22
+    def _create_redundant_node(self, context: LaunchContext, ros_specific_arguments: Dict[str, Union[str, List[str]]]) -> List[Action]:
+        """
+        Create a redundant copy of the current node with '_redundancy' suffix.
+        
+        :param context: Launch context
+        :param ros_specific_arguments: ROS specific arguments for the original node
+        :return: List containing the redundant node action
+        """
+        # Create redundant node name
+        original_name = self.__expanded_node_name
+        redundant_name = f"{original_name}_redundancy"
+        
+        # Determine sub_title (use provided or default to original name)
+        sub_title = self.__sub_title if self.__sub_title is not None else original_name
+        
+        # Create new ros_specific_arguments for redundant node
+        redundant_ros_args = ros_specific_arguments.copy()
+        redundant_ros_args['name'] = f'__node:={redundant_name}'
+        redundant_ros_args['sub_title'] = f'__sub_title:={sub_title}'
+        redundant_ros_args['type'] = '__type:=secondary'
+        
+        
+        # Create redundant node action with all original options
+        # Get original node's ExecuteProcess options safely
+        execute_process_options = {}
+        
+        # Safely extract ExecuteProcess options from original node
+        for attr_name in ['output', 'log_cmd', 'emulate_tty', 'shell', 'sigterm_timeout', 'sigkill_timeout']:
+            try:
+                if hasattr(self, attr_name):
+                    value = getattr(self, attr_name)
+                    # Only add if it's a valid type for the constructor
+                    if isinstance(value, (str, bool, int, float)) or value is None:
+                        execute_process_options[attr_name] = value
+            except (AttributeError, TypeError):
+                # Skip if attribute doesn't exist or has wrong type
+                continue
+        
+        redundant_node = Node(
+            executable=self.__node_executable,
+            package=self.__package,
+            name=redundant_name,
+            namespace=self.__node_namespace,
+            exec_name=f"{self.name}_redundancy",
+            parameters=self.__parameters,
+            remappings=self.__remappings,
+            arguments=self.__arguments,
+            ros_arguments=self.__ros_arguments,
+            redundancy=False,  # Prevent infinite recursion
+            sub_title=sub_title,
+            node_type='secondary',
+            **execute_process_options
+        )
+        
+        
+        # Update context with redundant node metadata
+        context.extend_locals({'ros_specific_arguments': redundant_ros_args})
+        
+        # Set the redundant node's metadata before execution
+        redundant_node.__sub_title = sub_title
+        redundant_node.__node_type = 'secondary'
+        
+        
+        # Execute redundant node with proper arguments
+        redundant_actions = redundant_node.execute(context)
+        
+        # Add redundant node name to context
+        add_node_name(context, redundant_name)
+        
+        # Return both original and redundant actions
+        result_actions = [self] if redundant_actions else []
+        result_actions.extend(redundant_actions if redundant_actions else [])
+        
+        return result_actions
 
 
 def instantiate_extension(

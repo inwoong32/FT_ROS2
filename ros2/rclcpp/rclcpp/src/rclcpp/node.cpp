@@ -208,7 +208,11 @@ Node::Node(
   node_waitables_(new rclcpp::node_interfaces::NodeWaitables(node_base_.get())),
   node_options_(options),
   sub_namespace_(""),
-  effective_namespace_(create_effective_namespace(this->get_namespace(), sub_namespace_))
+  effective_namespace_(create_effective_namespace(this->get_namespace(), sub_namespace_)),
+// ## ADD By IW 
+// ## 25.10.22
+  sub_title_(""),
+  node_type_("")
 {
   // we have got what we wanted directly from the overrides,
   // but declare the parameters anyway so they are visible.
@@ -224,6 +228,11 @@ Node::Node(
     node_topics_->resolve_topic_name("/parameter_events"),
     options.parameter_event_qos(),
     rclcpp::detail::PublisherQosParametersTraits{});
+
+// ## ADD By IW 
+// ## 25.10.22
+  // Parse metadata from command line arguments
+  _parse_metadata_from_args();
 }
 
 Node::Node(
@@ -604,4 +613,47 @@ const NodeOptions &
 Node::get_node_options() const
 {
   return this->node_options_;
+}
+
+// ## ADD By IW 
+// ### 25.10.22
+
+const std::string &
+Node::get_sub_title() const
+{
+  return sub_title_;
+}
+
+const std::string &
+Node::get_node_type() const
+{
+  return node_type_;
+}
+
+void
+Node::_parse_metadata_from_args()
+{
+  // Parse sub_title and node_type from environment variables
+  const char* sub_title_env = std::getenv("ROS_NODE_SUB_TITLE");
+  const char* node_type_env = std::getenv("ROS_NODE_TYPE");
+  
+  if (sub_title_env != nullptr) {
+    sub_title_ = std::string(sub_title_env);
+    std::cout << "DEBUG: Found ROS_NODE_SUB_TITLE=" << sub_title_ << std::endl;
+  }
+  if (node_type_env != nullptr) {
+    node_type_ = std::string(node_type_env);
+    std::cout << "DEBUG: Found ROS_NODE_TYPE=" << node_type_ << std::endl;
+  }
+  
+  // Set default values if not specified
+  if (sub_title_.empty()) {
+    sub_title_ = this->get_name(); // Default to node name
+  }
+  if (node_type_.empty()) {
+    node_type_ = "primary"; // Default to primary
+  }
+  
+  // Debug output
+  std::cout << "DEBUG: Parsed metadata - sub_title: " << sub_title_ << ", node_type: " << node_type_ << std::endl;
 }
